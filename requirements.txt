@@ -5,3 +5,4 @@ rich
 pyqt5
 PyQt-Fluent-Widgets[full]
 selenium
+webdriver-manager

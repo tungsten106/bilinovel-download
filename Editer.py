@@ -17,7 +17,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, wait
 import pickle
 from selenium import webdriver
-from selenium.webdriver.edge.options import Options
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+
 
 lock = threading.RLock()
 
@@ -27,10 +30,23 @@ class Editer(object):
         self.header = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.67 Safari/537.36 Edg/87.0.664.47', 'referer': head}
 
         self.url_head = head
+
+        # ChromeOptions 与路径配置
         options = Options()
         options.add_argument('--start-minimized')
+        options.add_argument('--headless')  # 可选：启用无头模式
 
-        self.driver = webdriver.Edge(options = options)
+        # 使用 ChromeDriverManager 自动下载 ChromeDriver
+        driver_path = ChromeDriverManager().install()
+        service = Service(driver_path)
+
+        try:
+            self.driver = webdriver.Chrome(service=service, options=options)
+        except Exception as e:
+            print(f"Error initializing webdriver: {e}")
+            raise
+
+        # 后续逻辑保持不变...
         self.main_page = f'{self.url_head}/novel/{book_no}.html'
         self.cata_page = f'{self.url_head}/novel/{book_no}/catalog'
         self.read_tool_page = f'{self.url_head}/themes/zhmb/js/readtool.js'
