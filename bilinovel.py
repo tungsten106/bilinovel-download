@@ -31,16 +31,27 @@ def delete_tmp():
     if os.path.exists(temp_path): 
         shutil.rmtree(temp_path)
 
-def download_single_volume(root_path,
-                           book_no,
-                           volume_no,
-                           is_gui=False,
-                           hang_signal=None,
-                           progressring_signal=None,
-                           cover_signal=None,
-                           edit_line_hang=None):
-    
-    editer = Editer(root_path=root_path, book_no=book_no, volume_no=volume_no)
+
+def download_single_volume(
+    root_path: str,
+    book_no: str,
+    volume_no: str,
+    is_gui=False,
+    hang_signal=None,
+    progressring_signal=None,
+    cover_signal=None,
+    edit_line_hang=None,
+    color_chap_name: str = "插图",
+    color_page_name: str = "彩页",
+):
+
+    editer = Editer(
+        root_path=root_path,
+        book_no=book_no,
+        volume_no=volume_no,
+        color_chap_name=color_chap_name,
+        color_page_name=color_page_name,
+    )
     print('正在积极地获取书籍信息....')
     success = editer.get_index_url()
     if not success:
@@ -59,11 +70,10 @@ def download_single_volume(root_path,
     else:
         print('检测到文本文件，直接下载插图')
         editer.buffer()
-    
 
     print('正在下载插图.....................................')
     editer.get_image(is_gui=is_gui, signal=progressring_signal)
-    
+
     print('正在编辑元数据....')
     editer.get_cover(is_gui=is_gui, signal=cover_signal)
     editer.get_toc()
@@ -73,16 +83,20 @@ def download_single_volume(root_path,
     print('正在生成电子书....')
     epub_file = editer.get_epub()
     print('生成成功！', f'电子书路径【{epub_file}】')
-    
 
-def downloader_router(root_path,
-                      book_no,
-                      volume_no,
-                      is_gui=False, 
-                      hang_signal=None,
-                      progressring_signal=None,
-                      cover_signal=None,
-                      edit_line_hang=None):
+
+def downloader_router(
+    root_path: str,
+    book_no,
+    volume_no,
+    is_gui=False,
+    hang_signal=None,
+    progressring_signal=None,
+    cover_signal=None,
+    edit_line_hang=None,
+    color_chap_name: str = "插图",
+    color_page_name: str = "彩页",
+):
     is_multi_chap = False
     if len(book_no)==0:
         print('请检查输入是否完整正确！')
@@ -112,15 +126,41 @@ def downloader_router(root_path,
             print('请检查输入是否完整正确！')
             return
     else:
-            print('请检查输入是否完整正确！')
-            return
+        print('请检查输入是否完整正确！')
+        return
+
+    if not os.path.exists(root_path):
+        os.mkdir(root_path)
     if is_multi_chap:
         for volume_no in volume_no_list:
-            download_single_volume(root_path, book_no, volume_no, is_gui, hang_signal, progressring_signal, cover_signal, edit_line_hang)
+            download_single_volume(
+                root_path,
+                book_no,
+                volume_no,
+                is_gui,
+                hang_signal,
+                progressring_signal,
+                cover_signal,
+                edit_line_hang,
+                color_chap_name=color_chap_name,
+                color_page_name=color_page_name,
+            )
         print('所有下载任务都已经完成！')
     else:
-        download_single_volume(root_path, book_no, volume_no, is_gui, hang_signal, progressring_signal, cover_signal, edit_line_hang)
-    
+        download_single_volume(
+            root_path,
+            book_no,
+            volume_no,
+            is_gui,
+            hang_signal,
+            progressring_signal,
+            cover_signal,
+            edit_line_hang,
+            color_chap_name=color_chap_name,
+            color_page_name=color_page_name,
+        )
+
+
 if __name__=='__main__':
     args = parse_args()
     download_path = os.path.join(os.path.expanduser('~'), 'Downloads')
@@ -136,10 +176,3 @@ if __name__=='__main__':
             # args.volume_no = '1'
             # downloader_router(root_path='out', book_no=args.book_no, volume_no=args.volume_no)
             # exit(0)
-    
-        
-
-    
-
-    
-    

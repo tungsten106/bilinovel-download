@@ -24,9 +24,17 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 lock = threading.RLock()
 
-class Editer(object):
-    def __init__(self, root_path, head='https://www.linovelib.com', book_no='0000', volume_no=1):
-        
+    def __init__(
+        self,
+        root_path: str,
+        # head="https://www.linovelib.com",
+        head: str = "https://www.bilinovel.com",
+        book_no: str = "0000",
+        volume_no: str = 1,
+        color_chap_name: str = "插图",
+        color_page_name: str = "彩页",
+    ):
+
         self.header = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.67 Safari/537.36 Edg/87.0.664.47', 'referer': head}
 
         self.url_head = head
@@ -41,7 +49,9 @@ class Editer(object):
         service = Service(driver_path)
 
         try:
+            print("Initializing Chrome webdriver...")
             self.driver = webdriver.Chrome(service=service, options=options)
+            print("Done!")
         except Exception as e:
             print(f"Error initializing webdriver: {e}")
             raise
@@ -50,10 +60,11 @@ class Editer(object):
         self.main_page = f'{self.url_head}/novel/{book_no}.html'
         self.cata_page = f'{self.url_head}/novel/{book_no}/catalog'
         self.read_tool_page = f'{self.url_head}/themes/zhmb/js/readtool.js'
-        self.color_chap_name = '插图'
-        self.color_page_name = '彩页'
+        self.color_chap_name = color_chap_name
+        self.color_page_name = color_page_name
         self.html_buffer = dict()
         
+        # 获取主页内容
         main_html = self.get_html(self.main_page)
         bf = BeautifulSoup(main_html, 'html.parser')
         self.title = bf.find('meta', {"property": "og:novel:book_name"})['content']
