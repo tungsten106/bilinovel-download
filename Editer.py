@@ -23,6 +23,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 
 lock = threading.RLock()
+class Editer:
 
     def __init__(
         self,
@@ -35,15 +36,30 @@ lock = threading.RLock()
         color_page_name: str = "彩页",
     ):
 
-        self.header = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.67 Safari/537.36 Edg/87.0.664.47', 'referer': head}
+        self.header = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.67 Safari/537.36 Edg/87.0.664.47",
+            "referer": head,
+        }
 
         self.url_head = head
 
         # ChromeOptions 与路径配置
         options = Options()
-        options.add_argument('--start-minimized')
+        # 修改ChromeOptions以加速
+        # options.add_argument('--start-minimized')
         options.add_argument('--headless')  # 可选：启用无头模式
+        options.add_argument('--disable-gpu')  # 如果是 Windows，建议加上这个参数
+        options.add_argument('--no-sandbox')  # 解决DevToolsActivePort文件不存在的报错
+        options.add_argument('--disable-dev-shm-usage')  # 适用于内存不足时使用
+        options.add_argument('--disable-extensions')  # 禁用扩展以提高性能
+        options.add_argument('--disable-infobars')  # 禁用自动化提示信息
+        options.add_argument('--start-maximized')  # 最大化窗口运行
 
+        prefs = {
+            "profile.managed_default_content_settings.images": 2,  # 禁用图片加载
+            "profile.managed_default_content_settings.javascript": 2  # 禁用 JavaScript 加载
+        }
+        options.add_experimental_option("prefs", prefs)
         # 使用 ChromeDriverManager 自动下载 ChromeDriver
         driver_path = ChromeDriverManager().install()
         service = Service(driver_path)
@@ -51,6 +67,7 @@ lock = threading.RLock()
         try:
             print("Initializing Chrome webdriver...")
             self.driver = webdriver.Chrome(service=service, options=options)
+            self.driver.set_page_load_timeout(time_to_wait=120)
             print("Done!")
         except Exception as e:
             print(f"Error initializing webdriver: {e}")
@@ -63,7 +80,7 @@ lock = threading.RLock()
         self.color_chap_name = color_chap_name
         self.color_page_name = color_page_name
         self.html_buffer = dict()
-        
+
         # 获取主页内容
         main_html = self.get_html(self.main_page)
         bf = BeautifulSoup(main_html, 'html.parser')
@@ -73,13 +90,13 @@ lock = threading.RLock()
             self.cover_url = re.search(r'src=\"(.*?)\"', str(bf.find('div', {"class": "book-img fl"}))).group(1)
         except:
             self.cover_url = 'cid'
-            
+
         self.img_url_map = dict()
         self.volume_no = volume_no
 
         self.epub_path = root_path
         self.temp_path = check_chars(os.path.join(self.epub_path,  'temp_'+ self.title + '_' + str(self.volume_no)))
-    
+
         self.missing_last_chap_list = []
         self.is_color_page = True
         self.page_url_map = dict()
@@ -87,30 +104,32 @@ lock = threading.RLock()
         self.url_buffer = []
         self.max_thread_num = 8
         self.pool = ThreadPoolExecutor(self.max_thread_num)
-        
+
     # 获取html文档内容
     def get_html(self, url, is_gbk=False):
         while True:
-            time.sleep(0.5)
+            time.sleep(0.1)
             self.driver.get(url)
             req = self.driver.page_source
-            while '<title>Access denied | www.linovelib.com used Cloudflare to restrict access</title>' in req:
-                time.sleep(5)
+            if '<title>Access denied | www.linovelib.com used Cloudflare to restrict access</title>' in req:
+                # time.sleep(5)
+                print("Access denied | www.linovelib.com used Cloudflare to restrict access")
+                raise Exception("Access denied | www.linovelib.com used Cloudflare to restrict access")
                 self.driver.get(url)
                 req = self.driver.page_source
             if is_gbk:
                 req.encoding = 'GBK'       #这里是网页的编码转换，根据网页的实际需要进行修改，经测试这个编码没有问题
             break
         return req
-    
+
     def get_html_img(self, url):
-        time.sleep(0.5)
+        time.sleep(0.1)
         req=requests.get(url, headers=self.header)
         while 'Forbidden' in str(req.content[0:100]):
             req=requests.get(url, headers=self.header)
-            time.sleep(0.5)
+            time.sleep(0.1)
         return req.content
-        
+
     def make_folder(self):
         os.makedirs(self.temp_path, exist_ok=True)
 
@@ -119,40 +138,38 @@ lock = threading.RLock()
 
         self.img_path = os.path.join(self.temp_path,  'OEBPS/Images')
         os.makedirs(self.img_path, exist_ok=True)
-    
+
     def get_index_url(self):
         self.volume = {}
         self.volume['chap_urls'] = []
         self.volume['chap_names'] = []
-        chap_html_list = self.get_chap_list(is_print=False)
+        chap_html_list = self.get_chap_list(is_print=True)
         if len(chap_html_list)<self.volume_no:
             print('输入卷号超过实际卷数！')
             return False
         volume_array = self.volume_no - 1
         chap_html = chap_html_list[volume_array]
-
-        self.volume['book_name'] = chap_html.find('h2', {'class': 'v-line'}).text
-        chap_list = chap_html.find_all('li', {'class', 'col-4'})
+        self.volume['book_name'] = chap_html.find('li', {'class': 'chapter-bar chapter-li'}).text
+        chap_list = chap_html.find_all('li', {'class', 'jsChapter'})
         for chap_html in chap_list:
-            self.volume['chap_names'].append(chap_html.text)
+            self.volume['chap_names'].append(chap_html.find('a').find('span', {'class': 'chapter-index'}).text)
             self.volume['chap_urls'].append(self.url_head + chap_html.find('a').get('href'))
         return True
-        
+
     def get_chap_list(self, is_print=True):
         cata_html = self.get_html(self.cata_page, is_gbk=False)
         bf = BeautifulSoup(cata_html, 'html.parser')
-        chap_html_list = bf.find_all('div', {'class', 'volume clearfix'})
+        chap_html_list: list[BeautifulSoup] = bf.find_all('div', {'class', 'catalog-volume'})
         if is_print:
             for chap_no, chap_html in enumerate(chap_html_list):
-                print(f'[{chap_no+1}]', chap_html.find('h2', {'class': 'v-line'}).text)
-            return
+                print(f'[{chap_no+1}]', chap_html.find('li', {'class': 'chapter-bar chapter-li'}).text)
+            return chap_html_list
         else:
             return chap_html_list
 
-
     def get_page_text(self, content_html):
         bf = BeautifulSoup(content_html, 'html.parser')
-        text_with_head = bf.find('div', {'id': 'TextContent', 'class': 'read-content'}) 
+        text_with_head = bf.find('div', {'id': 'acontentz', 'class': 'bcontent'}) 
         text_html = str(text_with_head)
         img_urlre_list = re.findall(r"<img .*?>", text_html)
         for img_urlre in img_urlre_list:
@@ -174,7 +191,7 @@ lock = threading.RLock()
                     text_html = text_html[:symbol_index] + '\n' + text_html[symbol_index:]
         text = BeautifulSoup(text_html, 'html.parser').get_text()
         return text
-    
+
     def get_chap_text(self, url, chap_name, return_next_chapter=False):
         text_chap = ''
         page_no = 1 
@@ -195,15 +212,25 @@ lock = threading.RLock()
                 url = self.url_head + url_new
             else:
                 if return_next_chapter:
-                    next_chap_url = self.url_head + re.search(r'书签</a><a href="(.*?)">下一章</a>', content_html).group(1)
+                    # next_chap_url = self.url_head + re.search(r'书签</a><a href="(.*?)">下一章</a>', content_html).group(1)
+                    bf = BeautifulSoup(content_html, 'html.parser')
+                    next_chap_url = bf.find('link', {'rel': 'prerender'}).get('href')
                 break
         return text_chap, next_chap_url
-    
+
     def get_text(self):
         self.make_folder()   
+
+        text_html_color = []
         img_strs = []   #记录后文中出现的所有图片位置
         text_no=0   #text_no正文章节编号(排除插图)   chap_no 是所有章节编号
-        for chap_no, (chap_name, chap_url) in enumerate(zip(self.volume['chap_names'], self.volume['chap_urls'])):
+        for chap_no, (chap_name, chap_url) in enumerate(
+            zip(self.volume["chap_names"], self.volume["chap_urls"])
+        ):
+            textfile = self.text_path + f'/{str(text_no).zfill(2)}.xhtml'
+            if os.path.exists(textfile):
+                print(f"{textfile} already exists!")
+                continue
             is_fix_next_chap_url = (chap_name in self.missing_last_chap_list)
             text, next_chap_url = self.get_chap_text(chap_url, chap_name, return_next_chapter=is_fix_next_chap_url)
             if is_fix_next_chap_url: 
@@ -220,7 +247,7 @@ lock = threading.RLock()
                     if img_str is not None:
                         img_strs.append(img_str.group(0))
                 text_no += 1
-            
+
         # 将彩页中后文已经出现的图片删除，避免重复
         if self.is_color_page: #判断彩页是否存在
             text_html_color_new = []
@@ -232,11 +259,10 @@ lock = threading.RLock()
                         is_save = False
                         break
                 if is_save:
-                   text_html_color_new.append(text_line) 
-        
+                    text_html_color_new.append(text_line) 
+
             with open(textfile, 'w+', encoding='utf-8') as f:
                 f.writelines(text_html_color_new)
-        
 
     def get_image(self, is_gui=False, signal=None):
         if is_gui:
@@ -281,27 +307,28 @@ lock = threading.RLock()
                         self.volume['chap_urls'][0] = self.hand_in_url(chap_names[chap_no], is_gui, signal, editline)
                     else:   #其余章节反向修复失败 默认使用正向修复 
                         self.missing_last_chap_list.append(chap_names[chap_no-1])
-        
-         #没有检测到插图页，手动输入插图页标题
+
+        # 没有检测到插图页，手动输入插图页标题
         if self.color_chap_name not in self.volume['chap_names']:
             self.color_chap_name = self.hand_in_color_page_name(is_gui, signal, editline)
 
-        #没有彩页 但主页封面存在，将主页封面设为书籍封面 
+        # 没有彩页 但主页封面存在，将主页封面设为书籍封面
         if self.color_chap_name=='' and (not self.check_url(self.cover_url)):  
             self.is_color_page = False
             self.img_url_map[self.cover_url] = str(len(self.img_url_map)).zfill(2)
             print('**************')
             print('提示：没有彩页，但主页封面存在，将使用主页的封面图片作为本卷图书封面')
             print('**************')
-    
+
     def check_url(self, url):#当检测有问题返回True
         return ('javascript' in url or 'cid' in url)   
-    
+
     def get_prev_url(self, chap_no): #获取前一个章节的链接
         content_html = self.get_html(self.volume['chap_urls'][chap_no], is_gbk=False)
-        next_url = self.url_head + re.search(r'<div class="mlfy_page"><a href="(.*?)">上一章</a>', content_html).group(1)
+        # next_url = self.url_head + re.search(r'<div class="mlfy_page"><a href="(.*?)">上一章</a>', content_html).group(1)
+        next_url = self.url_head_mobile + re.search('var prevpage=\"(.*?)\";var', content_html).group(1)
         return next_url
-    
+
     def prev_fix_url(self, chap_no, chap_num):  #反向递归修复缺失链接（后修复前），若成功修复返回True，否则返回False 
         if chap_no==chap_num-1: #最后一个章节直接选择不修复 返回False
             return False
@@ -314,24 +341,24 @@ lock = threading.RLock()
         else:
             self.volume['chap_urls'][chap_no] = self.get_prev_url(chap_no+1)
             return True
-        
+
     def hand_in_msg(self, error_msg='', is_gui=False, signal=None, editline=None):
         if is_gui:
             print(error_msg)
             signal.emit('hang')
-            time.sleep(1)
+            time.sleep(0.5)
             while not editline.isHidden():
-                time.sleep(1)
+                time.sleep(0.5)
             content = editline.text()
             editline.clear()
         else:
             content = input(error_msg)
         return content
-            
+
     def hand_in_url(self, chap_name, is_gui=False, signal=None, editline=None):
         error_msg = f'章节\"{chap_name}\"连接失效，请手动输入该章节链接(手机版“{self.url_head}”开头的链接):'
         return self.hand_in_msg(error_msg, is_gui, signal, editline)
-    
+
     def hand_in_color_page_name(self, is_gui=False, signal=None, editline=None):
         if is_gui:
             error_msg = f'插图页面不存在，需要下拉选择插图页标题，若不需要插图页则保持本栏为空直接点确定：'
@@ -340,7 +367,7 @@ lock = threading.RLock()
         else:
             error_msg = f'插图页面不存在，需要手动输入插图页标题，若不需要插图页则不输入直接回车：'
         return self.hand_in_msg(error_msg, is_gui, signal, editline) 
-    
+
     def get_toc(self):
         if self.is_color_page:
             ind = self.volume["chap_names"].index(self.color_chap_name)
@@ -381,7 +408,7 @@ lock = threading.RLock()
                     zf.write(os.path.join(dirpath, filename), fpath+filename)
         shutil.rmtree(self.temp_path)
         return epub_file
-    
+
     # # 恢复函数，根据secret_map进行恢复
     # def restore_chars(self, text):
     #     restored_text = ""
@@ -394,7 +421,7 @@ lock = threading.RLock()
     #                 restored_text += char
     #         i += 1
     #     return restored_text
-    
+
     def buffer(self):
         filename = 'buffer.pkl'
         filepath = os.path.join(self.temp_path, filename)
@@ -408,8 +435,11 @@ lock = threading.RLock()
         else:
             with open(filepath, 'wb') as f:
                 pickle.dump((self.volume ,self.img_url_map), f)
-    
+
     def is_buffer(self):
         filename = 'buffer.pkl'
         filepath = os.path.join(self.temp_path, filename)
         return os.path.isfile(filepath)
+
+if __name__ == "__main__":
+    Editer(root_path=".", book_no="3410", volume_no=1)
