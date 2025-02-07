@@ -2,7 +2,10 @@ import argparse
 from Editer import Editer
 import os
 import shutil
+import logging
 from utils import *
+
+_logger = logging.getLogger(__name__)
 
 def parse_args():
     """Parse input arguments."""
@@ -15,19 +18,19 @@ def parse_args():
 
 
 def query_chaps(book_no):
-    print('未输入卷号，将返回书籍目录信息......')
+    _logger.info('未输入卷号，将返回书籍目录信息......')
     editer = Editer(root_path='./out', book_no=book_no)
-    print('*******************************')
-    print(editer.title, editer.author)
-    print('*******************************')
+    _logger.info('*******************************')
+    _logger.info("title: {}; Author: {}".format(editer.title, editer.author))
+    _logger.info('*******************************')
     editer.get_chap_list()
-    print('*******************************')
-    print('请输入所需要的卷号进行下载（多卷可以用英文逗号分隔或直接使用连字符，详情见说明）')
+    _logger.info('*******************************')
+    _logger.info('请输入所需要的卷号进行下载（多卷可以用英文逗号分隔或直接使用连字符，详情见说明）')
 
 temp_path = ''
 
 def delete_tmp():
-    print(temp_path)
+    _logger.info("saving to {}".format(temp_path))
     if os.path.exists(temp_path): 
         shutil.rmtree(temp_path)
 
@@ -52,38 +55,41 @@ def download_single_volume(
         color_chap_name=color_chap_name,
         color_page_name=color_page_name,
     )
-    print('正在积极地获取书籍信息....')
+    _logger.info('正在积极地获取书籍信息....')
     success = editer.get_index_url()
     if not success:
-        print('书籍信息获取失败')
+        _logger.info('书籍信息获取失败')
         return
-    print(editer.title + '-' + editer.volume['book_name'], editer.author)
-    print('****************************')
+    _logger.info(
+        "title: {}; Author: {}".format(
+            editer.title + "-" + editer.volume["book_name"], editer.author
+        )
+    )
+    _logger.info('****************************')
     temp_path = editer.temp_path
     if not editer.is_buffer():
         editer.check_volume(is_gui=is_gui, signal=hang_signal, editline=edit_line_hang)
-        print('正在下载文本....')
-        print('*********************') 
+        _logger.info('正在下载文本....')
+        _logger.info('*********************') 
         editer.get_text()
-        print('*********************')
+        _logger.info('*********************')
         editer.buffer()
     else:
-        print('检测到文本文件，直接下载插图')
+        _logger.info('检测到文本文件，直接下载插图')
         editer.buffer()
 
-    print('正在下载插图.....................................')
+    _logger.info('正在下载插图.....................................')
     editer.get_image(is_gui=is_gui, signal=progressring_signal)
 
-    print('正在编辑元数据....')
+    _logger.info('正在编辑元数据....')
     editer.get_cover(is_gui=is_gui, signal=cover_signal)
     editer.get_toc()
     editer.get_content()
     editer.get_epub_head()
 
-    print('正在生成电子书....')
+    _logger.info('正在生成电子书....')
     epub_file = editer.get_epub()
-    print('生成成功！', f'电子书路径【{epub_file}】')
-
+    _logger.info('生成成功！电子书路径【{}】'.format(epub_file))
 
 def downloader_router(
     root_path: str,
@@ -99,7 +105,7 @@ def downloader_router(
 ):
     is_multi_chap = False
     if len(book_no)==0:
-        print('请检查输入是否完整正确！')
+        _logger.error('请检查输入是否完整正确！')
         return
     elif volume_no == '':
         query_chaps(book_no)
@@ -107,7 +113,7 @@ def downloader_router(
     elif volume_no.isdigit():
         volume_no = int(volume_no)
         if volume_no<=0:
-            print('请检查输入是否完整正确！') 
+            _logger.error('请检查输入是否完整正确！') 
             return
     elif "-" in volume_no:
         start, end = map(str, volume_no.split("-"))
@@ -115,7 +121,7 @@ def downloader_router(
             volume_no_list = list(range(int(start), int(end) + 1))
             is_multi_chap = True
         else:
-            print('请检查输入是否完整正确！')
+            _logger.error('请检查输入是否完整正确！')
             return
     elif "," in volume_no:
         volume_no_list = [num for num in volume_no.split(",")]
@@ -123,10 +129,10 @@ def downloader_router(
             volume_no_list = [int(num) for num in volume_no_list] 
             is_multi_chap = True
         else:
-            print('请检查输入是否完整正确！')
+            _logger.error('请检查输入是否完整正确！')
             return
     else:
-        print('请检查输入是否完整正确！')
+        _logger.error('请检查输入是否完整正确！')
         return
 
     if not os.path.exists(root_path):
@@ -145,7 +151,7 @@ def downloader_router(
                 color_chap_name=color_chap_name,
                 color_page_name=color_page_name,
             )
-        print('所有下载任务都已经完成！')
+        _logger.info('所有下载任务都已经完成！')
     else:
         download_single_volume(
             root_path,

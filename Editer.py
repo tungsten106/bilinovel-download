@@ -20,7 +20,9 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+import logging
 
+_logger = logging.getLogger(__name__)
 
 lock = threading.RLock()
 class Editer:
@@ -42,6 +44,7 @@ class Editer:
         }
 
         self.url_head = head
+        self.url_head_mobile = head
 
         # ChromeOptions 与路径配置
         options = Options()
@@ -65,13 +68,13 @@ class Editer:
         service = Service(driver_path)
 
         try:
-            print("Initializing Chrome webdriver...")
+            _logger.info("Initializing Chrome webdriver...")
             self.driver = webdriver.Chrome(service=service, options=options)
             self.driver.set_page_load_timeout(time_to_wait=120)
-            print("Done!")
+            _logger.info("Done!")
         except Exception as e:
-            print(f"Error initializing webdriver: {e}")
-            raise
+            _logger.error(f"Error initializing webdriver: {e}")
+            raise e
 
         # 后续逻辑保持不变...
         self.main_page = f'{self.url_head}/novel/{book_no}.html'
@@ -113,7 +116,7 @@ class Editer:
             req = self.driver.page_source
             if '<title>Access denied | www.linovelib.com used Cloudflare to restrict access</title>' in req:
                 # time.sleep(5)
-                print("Access denied | www.linovelib.com used Cloudflare to restrict access")
+                _logger.error("Access denied | www.linovelib.com used Cloudflare to restrict access")
                 raise Exception("Access denied | www.linovelib.com used Cloudflare to restrict access")
                 self.driver.get(url)
                 req = self.driver.page_source
@@ -145,7 +148,7 @@ class Editer:
         self.volume['chap_names'] = []
         chap_html_list = self.get_chap_list(is_print=True)
         if len(chap_html_list)<self.volume_no:
-            print('输入卷号超过实际卷数！')
+            _logger.error('输入卷号超过实际卷数！')
             return False
         volume_array = self.volume_no - 1
         chap_html = chap_html_list[volume_array]
@@ -162,7 +165,7 @@ class Editer:
         chap_html_list: list[BeautifulSoup] = bf.find_all('div', {'class', 'catalog-volume'})
         if is_print:
             for chap_no, chap_html in enumerate(chap_html_list):
-                print(f'[{chap_no+1}]', chap_html.find('li', {'class': 'chapter-bar chapter-li'}).text)
+                _logger.info("[{}] {}".format(chap_no+1, chap_html.find('li', {'class': 'chapter-bar chapter-li'}).text))
             return chap_html_list
         else:
             return chap_html_list
@@ -202,7 +205,7 @@ class Editer:
                 str_out = chap_name
             else:
                 str_out = f'    正在下载第{page_no}页......'
-            print(str_out)
+            _logger.info(str_out)
             content_html = self.get_html(url, is_gbk=False)
             text = self.get_page_text(content_html)
             text_chap += text
@@ -229,7 +232,7 @@ class Editer:
         ):
             textfile = self.text_path + f'/{str(text_no).zfill(2)}.xhtml'
             if os.path.exists(textfile):
-                print(f"{textfile} already exists!")
+                _logger.info(f"{textfile} already exists!")
                 continue
             is_fix_next_chap_url = (chap_name in self.missing_last_chap_list)
             text, next_chap_url = self.get_chap_text(chap_url, chap_name, return_next_chapter=is_fix_next_chap_url)
@@ -291,8 +294,8 @@ class Editer:
             if is_gui:
                 signal.emit(signal_msg)
         except Exception as e:
-            print(e)
-            print('没有封面图片，请自行用第三方EPUB编辑器手动添加封面')
+            _logger.error(e)
+            _logger.info('没有封面图片，请自行用第三方EPUB编辑器手动添加封面')
         img_htmls = get_cover_html(img_w, img_h)
         with open(textfile, 'w+', encoding='utf-8') as f:
             f.writelines(img_htmls)
@@ -316,20 +319,24 @@ class Editer:
         if self.color_chap_name=='' and (not self.check_url(self.cover_url)):  
             self.is_color_page = False
             self.img_url_map[self.cover_url] = str(len(self.img_url_map)).zfill(2)
-            print('**************')
-            print('提示：没有彩页，但主页封面存在，将使用主页的封面图片作为本卷图书封面')
-            print('**************')
+            _logger.info('**************')
+            _logger.info('提示：没有彩页，但主页封面存在，将使用主页的封面图片作为本卷图书封面')
+            _logger.info('**************')
 
-    def check_url(self, url):#当检测有问题返回True
+    def check_url(self, url):
+        """当检测有问题返回True"""
         return ('javascript' in url or 'cid' in url)   
 
-    def get_prev_url(self, chap_no): #获取前一个章节的链接
+    def get_prev_url(self, chap_no): 
+        """获取前一个章节的链接"""
         content_html = self.get_html(self.volume['chap_urls'][chap_no], is_gbk=False)
         # next_url = self.url_head + re.search(r'<div class="mlfy_page"><a href="(.*?)">上一章</a>', content_html).group(1)
-        next_url = self.url_head_mobile + re.search('var prevpage=\"(.*?)\";var', content_html).group(1)
+        # next_url = self.url_head_mobile + re.search('var prevpage=\"(.*?)\";var', content_html).group(1)
+        next_url = self.url_head + re.search(r'<div class="mlfy_page"><a href="(.*?)">上一章</a>', content_html).group(1)
         return next_url
 
-    def prev_fix_url(self, chap_no, chap_num):  #反向递归修复缺失链接（后修复前），若成功修复返回True，否则返回False 
+    def prev_fix_url(self, chap_no, chap_num):  
+        """反向递归修复缺失链接（后修复前），若成功修复返回True，否则返回False""" 
         if chap_no==chap_num-1: #最后一个章节直接选择不修复 返回False
             return False
         elif self.check_url(self.volume['chap_urls'][chap_no+1]):
@@ -406,7 +413,7 @@ class Editer:
                 fpath = fpath and fpath + os.sep or ''
                 for filename in filenames:
                     zf.write(os.path.join(dirpath, filename), fpath+filename)
-        shutil.rmtree(self.temp_path)
+        # shutil.rmtree(self.temp_path)
         return epub_file
 
     # # 恢复函数，根据secret_map进行恢复
